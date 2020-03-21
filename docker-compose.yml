@@ -74,13 +74,13 @@ services:
       - "traefik.http.routers.portainer.tls.certresolver=devopsresolver"
 
   nexus:
-    image: sonatype/nexus
+    image: sonatype/nexus3
     volumes:
       - "nexus-data:/nexus-data"
     networks:
       - frontend
     environment:
-      NEXUS_CONTEXT: /
+      NEXUS_CONTEXT: nexus
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nexus.entrypoints=http"

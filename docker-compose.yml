@@ -1,0 +1,127 @@
+version: "3.1"
+
+services:
+  traefik:
+    image: traefik:v2.1
+    ports:
+      - 443:443
+      - 80:80
+      - 8080:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - traefik-letsencrypt:/letsencrypt"
+    networks:
+      - frontend
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.http.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.devopsresolver.acme.tlschallenge=true"
+      #- "--certificatesresolvers.devopsresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.devopsresolver.acme.email=postmaster@devops.local"
+      - "--certificatesresolvers.devopsresolver.acme.storage=/letsencrypt/acme.json"
+
+  db:
+    image: postgres:alpine
+    networks:
+      - frontend
+    environment:
+      - POSTGRES_USER=${DEVOPS_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${DEVOPS_POSTGRES_PASSWORD}
+    volumes:
+      - postgresql:/var/lib/postgresql
+      - postgresql-data:/var/lib/postgresql/data
+
+  sonarqube:
+    image: sonarqube
+    networks:
+      - frontend
+    environment:
+      - sonar.jdbc.url=jdbc:postgresql://db:5432/sonar
+      - sonar.web.context=/sonarqube
+    volumes:
+      - sonarqube-conf:/opt/sonarqube/conf
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarqube.entrypoints=http"
+      - "traefik.http.routers.sonarqube.rule=PathPrefix(`/sonarqube`)"
+      - "traefik.http.routers.sonarqube.service=sonarqube"
+      - "traefik.http.services.sonarqube.loadbalancer.server.port=9000"
+      - "traefik.http.routers.sonarqube.entrypoints=websecure"
+      - "traefik.http.routers.sonarqube.tls.certresolver=devopsresolver"
+
+  portainer:
+    image: portainer/portainer:1.23.0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks:
+      - frontend
+    ports:
+      - 8000:8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=http"
+      - "traefik.http.routers.portainer.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.portainer.service=portainer"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certresolver=devopsresolver"
+
+  nexus:
+    image: sonatype/nexus
+    volumes:
+      - "nexus-data:/nexus-data"
+    networks:
+      - frontend
+    environment:
+      NEXUS_CONTEXT: /
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nexus.entrypoints=http"
+      - "traefik.http.routers.nexus.rule=PathPrefix(`/nexus`)"
+      - "traefik.http.routers.nexus.service=nexus"
+      - "traefik.http.services.nexus.loadbalancer.server.port=8081"
+      - "traefik.http.routers.nexus.entrypoints=websecure"
+      - "traefik.http.routers.nexus.tls.certresolver=devopsresolver"
+
+  ci:
+    build:
+      context: ./devops-jenkins
+    ports:
+      - "8080"
+    volumes:
+      - "./devops-jenkins/groovy:/var/jenkins_home/init.groovy.d/" # DEBUG PURPOSE ONLY
+      - jenkins-home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ci.entrypoints=http"
+      - "traefik.http.routers.ci.rule=PathPrefix(`/jenkins`)"
+      - "traefik.http.routers.ci.service=ci"
+      - "traefik.http.services.ci.loadbalancer.server.port=8080"
+      - "traefik.http.routers.ci.entrypoints=websecure"
+      - "traefik.http.routers.ci.tls.certresolver=tridensresolver"
+    environment:
+      - JENKINS_OPTS="--prefix=/jenkins"
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false -Dpermissive-script-security.enabled=true
+networks:
+  frontend: {}
+
+volumes:
+  traefik-letsencrypt: {}
+  sonarqube-conf: {}
+  sonarqube-data: {}
+  sonarqube-extensions: {}
+  postgresql: {}
+  postgresql-data: {}
+  portainer-data: {}
+  nexus-data: {}
+  jenkins-home: {}

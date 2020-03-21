@@ -79,6 +79,8 @@ services:
       - "nexus-data:/nexus-data"
     networks:
       - frontend
+    ports:
+      - 8123:8123
     environment:
       NEXUS_CONTEXT: nexus
     labels:
